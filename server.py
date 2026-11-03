@@ -60,32 +60,32 @@ def receive_file(conn):
 
 def delete_file(conn):
     filename = receive_filename(conn) #file name 
-    target_path = BACKUP_DIR / filename 
+    target_path = BACKUP_DIR / filename #path built in the backup directory
 
-    if target_path.is_file(): #
-        target_path.unlink()
-        conn.sendall(struct.pack("!B", 1))
-        print(f"Deleted file: {filename}", flush=True)
+    if target_path.is_file(): #if the file exists
+        target_path.unlink() #deletion of file
+        conn.sendall(struct.pack("!B", 1)) #flag byte to signify success
+        print(f"Deleted file: {filename}", flush=True) #print
     else:
-        conn.sendall(struct.pack("!B", 0))
+        conn.sendall(struct.pack("!B", 0)) #flag byte for failure
         print(f"Delete failed; no file called {filename}", flush=True)
 
 
 def list_files(conn):
     """Send a JSON list of backed-up filenames and their sizes."""
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    files = []
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True) #folder
+    files = [] #file name storage list
 
-    for path in sorted(BACKUP_DIR.iterdir(), key=lambda item: item.name.lower()):
+    for path in sorted(BACKUP_DIR.iterdir(), key=lambda item: item.name.lower()): #alphabetically sorted
         if path.is_file():
             files.append({
                 "name": path.name,
-                "size": path.stat().st_size
+                "size": path.stat().st_size #append details as dictionary
             })
 
-    payload = json.dumps(files).encode("utf-8")
-    conn.sendall(struct.pack("!I", len(payload)))
-    conn.sendall(payload)
+    payload = json.dumps(files).encode("utf-8") #converts to a JSON string and encodes it
+    conn.sendall(struct.pack("!I", len(payload))) #endian integer 
+    conn.sendall(payload) #actual payload itself
 
 
 def handle_client(conn, address):
