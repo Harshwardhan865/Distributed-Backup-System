@@ -7,7 +7,7 @@ if __name__ == '__main__':
     sys.path.append('.')
 
     # Initialize the OS-Ken application manager
-    app_mgr = app_manager.AppManager.get_instance()
+    app_mgr = app_manager.AppManager.get_instance() 
     
     # Load your application class
     app_mgr.load_apps(['backup_controller'])
@@ -15,7 +15,8 @@ if __name__ == '__main__':
     # Create required application contexts
     contexts = app_mgr.create_contexts()
     
-    # Instantiate and start the application threads/greenlets
+    # Instantiate and start the application threads/greenlets -  micro threads, avoids race threads 
+    #as in OS threads, better running of code
     app_mgr.instantiate_apps(**contexts)
     
     print("BackupController started successfully. Press Ctrl+C to exit.")
@@ -24,5 +25,5 @@ if __name__ == '__main__':
     try:
         while True:
             hub.sleep(1)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: #Ctrl + C
         print("\nShutting down controller...")
