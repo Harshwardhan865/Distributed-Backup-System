@@ -14,47 +14,52 @@ def receive_exactly(sock, size):
     """Receive exactly size bytes from the TCP socket."""
     data = bytearray() #raw stream of bytes
     while len(data) < size: 
-        chunk = sock.recv(size - len(data)) #a chunk of data
-        if not chunk:
-            raise ConnectionError("Server closed the connection unexpectedly")
-        data.extend(chunk)
+        chunk = sock.recv(size - len(data)) #a chunk of data, size - len(data) = number to bytes to be received yet
+        if not chunk: #if there's no data 
+            raise ConnectionError("Server closed the connection unexpectedly") 
+        data.extend(chunk) #append the bytes gotten in chunk to the byte array container.
     return bytes(data)
 
 
 def backup_file(sock, filename, file_size):
     """Send the filename length, filename, and file size."""
-    sock.sendall(struct.pack("!I", len(filename)))
-    sock.sendall(filename)
-    sock.sendall(struct.pack("!Q", file_size))
+    sock.sendall(struct.pack("!I", len(filename))) #sends the filename length in bytes
+    sock.sendall(filename) #the actual file name
+    sock.sendall(struct.pack("!Q", file_size)) #the size of the file in bytes
 
 
 def send_file(file_path):
-    path = Path(file_path).expanduser()
+    path = Path(file_path).expanduser() #path object, turns your string path into an actual path
+    #expanduser makes your path absolute in nature.
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    filename = path.name.encode("utf-8")
-    if not 1 <= len(filename) <= 255:
+    filename = path.name.encode("utf-8") #encodes file name into raw streams of bytes for server to understand
+    if not 1 <= len(filename) <= 255: #condition to check if filename size within permitted limit
         raise ValueError("Filename must be between 1 and 255 UTF-8 bytes")
 
     file_size = path.stat().st_size
-    digest = hashlib.sha256()
+    digest = hashlib.sha256() #makes a SHA-256 object, meaning it generates a 256 unique 
+    #signature for your data, like encrypting it
 
     with socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=15) as sock:
         # Opcode 1 tells the server this is a backup/upload request.
-        sock.sendall(struct.pack("!I", 1))
-        backup_file(sock, filename, file_size)
+        sock.sendall(struct.pack("!I", 1)) #an opcode prefix to denote that the connection is for a backup request
+        backup_file(sock, filename, file_size) #call the backup function
 
-        with path.open("rb") as source:
+        with path.open("rb") as source: #open binary object in read mode
             while True:
-                chunk = source.read(BUFFER_SIZE)
-                if not chunk:
-                    break
-                sock.sendall(chunk)
+                chunk = source.read(BUFFER_SIZE) #read a chunk of data from source of size buffer_size
+                if not chunk: #if NULL
+                    break #no point in continuing, so break out of the loop
+                sock.sendall(chunk) #send chunk to server
                 digest.update(chunk)
 
-        original_hash = digest.hexdigest()
-        server_hash = receive_exactly(sock, 64).decode("ascii")
+        original_hash = digest.hexdigest() #this gives the checksum strng after hashing/encrypting the data
+        #using the hashlib.sha256() function, 
+        server_hash = receive_exactly(sock, 64).decode("ascii") #checks whether all bytes have been received by server,
+        #and decodes it to a normal py str , server does its own hash and sends to client -> checks whether hashes
+    #are matching, if they do -> sent successfully, code is below
 
     print("\nTransfer completed!")
     print(f"Original SHA-256: {original_hash}")
@@ -66,36 +71,40 @@ def send_file(file_path):
 
 
 def delete_file(file_path):
-    path = Path(file_path).expanduser()
-    filename = path.name.encode("utf-8")
+    path = Path(file_path).expanduser() #path object
+    filename = path.name.encode("utf-8") #encoding filename
 
-    if not 1 <= len(filename) <= 255:
+    if not 1 <= len(filename) <= 255: #permitted range
         raise ValueError("Filename must be between 1 and 255 UTF-8 bytes")
 
     # The server deletes by filename from its backup directory. The local
     # source file does not need to exist for a remote deletion request.
     with socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=15) as sock:
         # Opcode 2 tells the server this is a deletion request.
-        sock.sendall(struct.pack("!I", 2))
-        sock.sendall(struct.pack("!I", len(filename)))
-        sock.sendall(filename)
+        sock.sendall(struct.pack("!I", 2)) #an opcode prefix to denote that the connection is for a deletion request
+        sock.sendall(struct.pack("!I", len(filename))) #length of file name
+        sock.sendall(filename) #raw bytes stream
 
-        status = struct.unpack("!B", receive_exactly(sock, 1))[0]
-        if status == 1:
-            print(f"\nSuccessfully deleted the file {path.name}!\n")
-        else:
-            print(f"\nERROR: {path.name} was not found on the backup server.\n")
+        status_response = sock.recv(1) #server's response to the file
+        if status_response: #if OK
+            status = struct.unpack("!B", receive_exactly(sock, 1))[0] #converts status_response byte object to translate it
+            #unpack returns tuple, and [0] takes only the opcode value from those elements
+            if status == 1:
+                print(f"\nSuccessfully deleted the file {path.name}!\n") #path.name extracts only the filename in the path object
+            else:
+                print(f"\nERROR: {path.name} was not found on the backup server.\n")
 
 
 def list_files():
     """Request and display the files stored in the server's backup directory."""
     with socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=15) as sock:
         # Opcode 3 tells the server this is a file-listing request.
-        sock.sendall(struct.pack("!I", 3))
+        sock.sendall(struct.pack("!I", 3)) 
 
-        response_length = struct.unpack("!I", receive_exactly(sock, 4))[0]
-        response = receive_exactly(sock, response_length)
-        files = json.loads(response.decode("utf-8"))
+        response_length = struct.unpack("!I", receive_exactly(sock, 4))[0] #converts response_length byte object to translate it
+        #to get the length
+        response = receive_exactly(sock, response_length) #checks whether all bytes received of size reponse_length
+        files = json.loads(response.decode("utf-8")) #decodes the byte object
 
     print("\n========== BACKUP FILE LIST ==========")
     if not files:
@@ -108,17 +117,16 @@ def list_files():
 
 
 def format_size(size):
-    units = ["bytes", "KB", "MB", "GB", "TB"]
+    units = ["bytes", "KB", "MB", "GB", "TB"] #for the sake of mentioning the file size next to the bytes.
     value = float(size)
     for unit in units:
-        if value < 1024 or unit == "TB":
+        if value < 1024 or unit == "TB":  #converting to most accurate representation of size 
             return f"{int(value)} {unit}" if unit == "bytes" else f"{value:.2f} {unit}"
         value /= 1024
 
-
 def main():
     while True:
-        try:
+        try: #menu driven program, options 
             choice = int(input(
                 "Enter the number for the corresponding function:\n"
                 "1. Backup\n"
@@ -135,7 +143,7 @@ def main():
                 #multiple file paths as a list of elements
                 file_paths = input("Enter the path(s) of the file to back up (separate by spaces please): ").strip().strip('"').split()
                 #traverse the list for each file path
-                for file_path in file_paths:
+                for file_path in file_paths: #file path container / list
                     try:
                         #will send the file through TCP connection
                         send_file(file_path)
