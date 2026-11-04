@@ -9,20 +9,20 @@ class BackupController(app_manager.OSKenApp):
 
     def __init__(self, *args, **kwargs):
         super(BackupController, self).__init__(*args, **kwargs)
-        self.datapaths = {}
+        self.datapaths = {} #keeps track of all the switches
         # Track status of the 4 parallel paths on s1 (ports 2, 3, 4, 5)
         self.path_status = {2: True, 3: True, 4: True, 5: True}
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
-        dp = ev.msg.datapath
+        dp = ev.msg.datapath 
         self.datapaths[dp.id] = dp
-        parser = dp.ofproto_parser
+        parser = dp.ofproto_parser #creates rules for routing table
         ofproto = dp.ofproto
 
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
-        self.add_flow(dp, 0, match, actions)
+        self.add_flow(dp, 0, match, actions) #adds rule to flow table
         self.logger.info("Switch connected: Dpid=%s", dp.id)
 
     def add_flow(self, dp, priority, match, actions):
@@ -40,7 +40,7 @@ class BackupController(app_manager.OSKenApp):
         ofproto = dp.ofproto
 
         port_no = msg.desc.port_no
-        if dp.id == 1 and port_no in [2, 3, 4, 5]:
+        if dp.id == 1 and port_no in [2, 3, 4, 5]: 
             # Check both link state down and port config down for maximum reliability
             is_down = (msg.desc.state & ofproto.OFPPS_LINK_DOWN) or (msg.desc.config & ofproto.OFPPC_PORT_DOWN)
             
@@ -59,8 +59,8 @@ class BackupController(app_manager.OSKenApp):
                 datapath=datapath,
                 command=d_ofproto.OFPFC_DELETE,
                 match=d_parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP)
-            )
-            datapath.send_msg(mod)
+            ) #modification message, tells the info about the changes
+            datapath.send_msg(mod) 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
